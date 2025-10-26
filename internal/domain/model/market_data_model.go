@@ -6,4 +6,3 @@ type MarketDataModel struct {
 	LastQuote float32
 	Category  int //TODO: criar enum pra esse cara
 }
-

@@ -40,4 +40,3 @@ func (m *MarketDataMapper) ToDomainSlice(dtos []MarketDataDTO) []model.MarketDat
 	}
 	return models
 }
-

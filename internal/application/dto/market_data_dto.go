@@ -7,4 +7,3 @@ type MarketDataDTO struct {
 	LastQuote float32 `db:"last_quote"`
 	Category  int     `db:"category"` //TODO: criar enum pra esse cara
 }
-

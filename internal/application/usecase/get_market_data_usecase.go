@@ -26,4 +26,3 @@ func (uc *GetMarketDataUsecase) Execute(symbols []string) ([]model.MarketDataMod
 
 	return marketDataList, nil
 }
-
