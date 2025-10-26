@@ -235,4 +235,3 @@ func (r *SQLXResult) LastInsertId() (int64, error) {
 func (r *SQLXResult) RowsAffected() (int64, error) {
 	return r.result.RowsAffected()
 }
-

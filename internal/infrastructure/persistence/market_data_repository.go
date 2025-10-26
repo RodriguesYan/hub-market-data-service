@@ -41,4 +41,3 @@ func (m *MarketDataRepository) GetMarketData(symbols []string) ([]model.MarketDa
 
 	return m.mapper.ToDomainSlice(marketDataList), nil
 }
-

@@ -280,4 +280,3 @@ func TestGetMarketDataUsecase_Execute_LargeSymbolList(t *testing.T) {
 	// Verify that the repository method was called
 	mockRepo.AssertExpectations(t)
 }
-
