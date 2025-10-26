@@ -43,7 +43,7 @@ func main() {
 	defer redisClient.Close()
 
 	marketDataRepo := persistence.NewMarketDataRepository(db)
-	
+
 	cacheClient := cacheHandler.NewRedisCacheHandler(redisClient)
 	cachedMarketDataRepo := cache.NewMarketDataCacheRepository(
 		marketDataRepo,
@@ -138,4 +138,3 @@ func waitForShutdown(grpcSrv *grpc.Server) {
 
 	log.Println("Market Data Service shut down successfully")
 }
-

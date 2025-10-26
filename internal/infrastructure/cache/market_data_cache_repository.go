@@ -135,4 +135,3 @@ func (c *MarketDataCacheRepository) WarmCache(symbols []string) error {
 	c.cacheNewData(data)
 	return nil
 }
-

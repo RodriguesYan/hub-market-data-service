@@ -43,4 +43,3 @@ func (r *RedisCacheHandler) Delete(key string) error {
 	}
 	return nil
 }
-

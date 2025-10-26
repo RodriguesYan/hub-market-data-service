@@ -89,4 +89,3 @@ func (s *MarketDataGRPCServer) GetBatchMarketData(ctx context.Context, req *pb.G
 func (s *MarketDataGRPCServer) GetAssetDetails(ctx context.Context, req *pb.GetAssetDetailsRequest) (*pb.GetAssetDetailsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "GetAssetDetails is not yet implemented")
 }
-

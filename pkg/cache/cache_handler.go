@@ -12,4 +12,3 @@ type CacheHandler interface {
 	Set(key string, value string, ttl time.Duration) error
 	Delete(key string) error
 }
-
