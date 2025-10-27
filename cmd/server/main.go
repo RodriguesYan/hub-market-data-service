@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RodriguesYan/hub-market-data-service/internal/application/service"
 	"github.com/RodriguesYan/hub-market-data-service/internal/application/usecase"
 	"github.com/RodriguesYan/hub-market-data-service/internal/config"
+	domainService "github.com/RodriguesYan/hub-market-data-service/internal/domain/service"
 	"github.com/RodriguesYan/hub-market-data-service/internal/infrastructure/cache"
 	"github.com/RodriguesYan/hub-market-data-service/internal/infrastructure/persistence"
 	grpcServer "github.com/RodriguesYan/hub-market-data-service/internal/presentation/grpc"
@@ -53,12 +55,16 @@ func main() {
 
 	getMarketDataUsecase := usecase.NewGetMarketDataUseCase(cachedMarketDataRepo)
 
-	grpcSrv := startGRPCServer(cfg, getMarketDataUsecase)
+	assetDataService := domainService.NewAssetDataService()
+	priceOscillationService := service.NewPriceOscillationService(assetDataService)
+	priceOscillationService.Start()
+
+	grpcSrv := startGRPCServer(cfg, getMarketDataUsecase, priceOscillationService)
 
 	log.Printf("Market Data Service started successfully")
 	log.Printf("gRPC server listening on port %s", cfg.GRPC.Port)
 
-	waitForShutdown(grpcSrv)
+	waitForShutdown(grpcSrv, priceOscillationService)
 }
 
 func initializeDatabase(cfg *config.Config) (database.Database, error) {
@@ -103,7 +109,11 @@ func initializeRedis(cfg *config.Config) *redis.Client {
 	return client
 }
 
-func startGRPCServer(cfg *config.Config, getMarketDataUsecase usecase.IGetMarketDataUsecase) *grpc.Server {
+func startGRPCServer(
+	cfg *config.Config,
+	getMarketDataUsecase usecase.IGetMarketDataUsecase,
+	priceOscillationService *service.PriceOscillationService,
+) *grpc.Server {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPC.Port))
 	if err != nil {
 		log.Fatalf("Failed to listen on port %s: %v", cfg.GRPC.Port, err)
@@ -111,7 +121,7 @@ func startGRPCServer(cfg *config.Config, getMarketDataUsecase usecase.IGetMarket
 
 	grpcSrv := grpc.NewServer()
 
-	marketDataServer := grpcServer.NewMarketDataGRPCServer(getMarketDataUsecase)
+	marketDataServer := grpcServer.NewMarketDataGRPCServer(getMarketDataUsecase, priceOscillationService)
 	pb.RegisterMarketDataServiceServer(grpcSrv, marketDataServer)
 
 	reflection.Register(grpcSrv)
@@ -126,12 +136,15 @@ func startGRPCServer(cfg *config.Config, getMarketDataUsecase usecase.IGetMarket
 	return grpcSrv
 }
 
-func waitForShutdown(grpcSrv *grpc.Server) {
+func waitForShutdown(grpcSrv *grpc.Server, priceOscillationService *service.PriceOscillationService) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-quit
 	log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+
+	log.Println("Stopping price oscillation service...")
+	priceOscillationService.Stop()
 
 	log.Println("Stopping gRPC server...")
 	grpcSrv.GracefulStop()
