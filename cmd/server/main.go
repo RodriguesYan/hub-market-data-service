@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 	domainService "github.com/RodriguesYan/hub-market-data-service/internal/domain/service"
 	"github.com/RodriguesYan/hub-market-data-service/internal/infrastructure/cache"
 	"github.com/RodriguesYan/hub-market-data-service/internal/infrastructure/persistence"
+	"github.com/RodriguesYan/hub-market-data-service/internal/metrics"
 	grpcServer "github.com/RodriguesYan/hub-market-data-service/internal/presentation/grpc"
 	cacheHandler "github.com/RodriguesYan/hub-market-data-service/pkg/cache"
 	"github.com/RodriguesYan/hub-market-data-service/pkg/database"
@@ -34,6 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	metricsCollector := metrics.NewMetrics()
+	metricsCollector.SetServiceInfo("1.0.0", time.Now().Format(time.RFC3339), "dev")
 
 	db, err := initializeDatabase(cfg)
 	if err != nil {
@@ -59,12 +64,16 @@ func main() {
 	priceOscillationService := service.NewPriceOscillationService(assetDataService)
 	priceOscillationService.Start()
 
+	httpSrv := startMetricsServer(cfg)
 	grpcSrv := startGRPCServer(cfg, getMarketDataUsecase, priceOscillationService)
+
+	startUptimeTracker(metricsCollector)
 
 	log.Printf("Market Data Service started successfully")
 	log.Printf("gRPC server listening on port %s", cfg.GRPC.Port)
+	log.Printf("Metrics endpoint: http://localhost:8083/metrics")
 
-	waitForShutdown(grpcSrv, priceOscillationService)
+	waitForShutdown(httpSrv, grpcSrv, priceOscillationService)
 }
 
 func initializeDatabase(cfg *config.Config) (database.Database, error) {
@@ -136,7 +145,40 @@ func startGRPCServer(
 	return grpcSrv
 }
 
-func waitForShutdown(grpcSrv *grpc.Server, priceOscillationService *service.PriceOscillationService) {
+func startMetricsServer(cfg *config.Config) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metrics.Handler())
+
+	srv := &http.Server{
+		Addr:    ":8083",
+		Handler: mux,
+	}
+
+	go func() {
+		log.Println("Metrics server starting on port 8083")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start metrics server: %v", err)
+		}
+	}()
+
+	return srv
+}
+
+func startUptimeTracker(m *metrics.Metrics) {
+	startTime := time.Now()
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			uptime := time.Since(startTime).Seconds()
+			m.UpdateServiceUptime(uptime)
+		}
+	}()
+}
+
+func waitForShutdown(httpSrv *http.Server, grpcSrv *grpc.Server, priceOscillationService *service.PriceOscillationService) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -145,6 +187,13 @@ func waitForShutdown(grpcSrv *grpc.Server, priceOscillationService *service.Pric
 
 	log.Println("Stopping price oscillation service...")
 	priceOscillationService.Stop()
+
+	log.Println("Stopping HTTP metrics server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
 
 	log.Println("Stopping gRPC server...")
 	grpcSrv.GracefulStop()
